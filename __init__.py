@@ -69,17 +69,19 @@ class NewTool(object):
                     # Get vertexes
                     verts = ["%s.vtx[%s]" % (s.sel, v) for v in findall(r"\s(\d+)\s", face[0])]
                     # Get Joints
-                    joints = cmds.skinPercent(skin, verts, q=True, t=None)
-                    #     print cmds.skinPercent(skin, "%s.vtx[%s]" % (s.sel, vert), q=True, v=True)
-                    # print "hit face id %s" % hitFace
-                    #create locator
-                    # loc1= cmds.spaceLocator(p=(hitPoint[0],hitPoint[1],hitPoint[2]), a=True)
-                    # cmds.refresh()
+                    cmds.select(verts, r=True)
+                    joints = cmds.skinPercent(skin, q=True, t=None)
+                    # Get weights
+                    weights = sorted(
+                        [(j, cmds.skinPercent(skin, t=j, q=True)) for j in joints],
+                        key= lambda x: x[1],
+                        reverse=True)
+                    cmds.select(weights[0][0], r=True)
                 else:
                     print "No skin found"
         # Return to previous tool
-        cmds.refresh()
         cmds.setToolTo(s.tool)
+        cmds.refresh()
 
 thing = NewTool()
 thing.load()
