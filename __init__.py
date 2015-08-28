@@ -67,21 +67,48 @@ class SamsClass():
 
 # a = SamsClass()
 # a.events()
+
 import maya.cmds as cmds
 import maya.api.OpenMaya as om
+import maya.api.OpenMayaUI as omui
 
 class NewTool(object):
     def __init__(s):
-        s.tool = cmds.currentCtx()
-        s.myTool = "TempTool"
-        if cmds.draggerContext(s.myTool, exists=True):
-            cmds.deleteUI(s.myTool)
-        cmds.draggerContext(s.myTool, name=s.myTool, pressCommand=s.click, cursor='crossHair', space="world")
-        cmds.setToolTo(s.myTool)
+        pass
+    def load(s):
+        s.sel = cmds.ls(sl=True)
+        s.sel = cmds.ls(type="mesh")
+        if s.sel:
+            s.tool = cmds.currentCtx()
+            s.myTool = "TempTool"
+            if cmds.draggerContext(s.myTool, exists=True):
+                cmds.deleteUI(s.myTool)
+            cmds.draggerContext(s.myTool, name=s.myTool, pressCommand=s.click, cursor='crossHair')
+            cmds.setToolTo(s.myTool)
     def click(s):
-        print "clicked"
-        print cmds.draggerContext(s.myTool, q=True, ap=True)
+        # Grab mouse co-ords on screen
+        viewX, viewY, _ = cmds.draggerContext(s.myTool, q=True, ap=True)
+        position = om.MPoint()
+        direction = om.MVector()
+        # Convert 2D screen positions into 3D world positions
+        omui.M3dView().active3dView().viewToWorld(int(viewX), int(viewY), position, direction)
+        for mesh in s.sel:
+            selectionList = om.MSelectionList()
+            selectionList.add(mesh)
+            dagPath = selectionList.getDagPath(0)
+            fnMesh = om.MFnMesh(dagPath)
+            intersection = fnMesh.closestIntersection(om.MFloatPoint(position), om.MFloatVector(direction), om.MSpace.kWorld, 99999, False)
+            print "pressing now 1"
+            print intersection
+            if intersection:
+                hitPoint, hitRayParam, hitFace, hitTriangle, hitBary1, hitBary2 = intersection
+                if hitTriangle != -1:
+                    #create locator
+                    loc1= cmds.spaceLocator(p=(hitPoint[0],hitPoint[1],hitPoint[2]), a=True)
+                    cmds.refresh()
+
         cmds.setToolTo(s.tool)
 
-
-cmds.scriptJob(ct=["SomethingSelected", NewTool], ro=True)
+thing = NewTool()
+thing.load()
+# print cmds.scriptJob(ct=["SomethingSelected", thing.load], ro=True)
