@@ -15,8 +15,9 @@ class Selector(object):
     def __init__(s, objects):
         s.meshes = objects # Allowed meshes
         s.mesh = ""
-        s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], ro=True)
+        s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#, ro=True)
         s.tool = "TempSelectionTool"
+        s.clearMeshes = False # Do we need to clear the meshes?
 
     """
     Monitor selection changes
@@ -28,15 +29,24 @@ class Selector(object):
             if selection and len(selection) == 1 and selection[0] in s.meshes:
                 s.switchTool()
                 s.mesh = selection[0]
+                s.setColour(s.mesh, (0.5,0.5,0.5))
+                s.clearMeshes = True
+            elif selection and cmds.ls(sl=True, st=True)[1] == "joint":
+                print "No need to clear"
             else:
-                for mesh in s.meshes:
-                    s.setColour(mesh)
-        # print cmds.ls(selection, st=True)
+                if s.clearMeshes:
+                    for mesh in s.meshes:
+                        s.setColour(mesh)
+                    s.clearMeshes = False
 
     """
     Set vertex colour on selection
     """
     def setColour(s, mesh, colour=None):
+        selection = cmds.ls(sl=True)
+        cmds.select(mesh, r=True)
+        cmds.polyColorPerVertex(rgb=(0.5,0.5,0.5))
+        cmds.select(selection, r=True)
         if colour:
             cmds.setAttr("%s.displayColors" % mesh, 1)
             cmds.polyColorPerVertex(rgb=colour)
@@ -53,12 +63,11 @@ class Selector(object):
         cmds.draggerContext(
             s.tool,
             name=s.tool,
-            releaseCommand=s.makeSelection,
+            pressCommand=s.makeSelection,
             dragCommand=s.updateSelectionPreview,
             cursor="hand")
         cmds.setToolTo(s.tool)
-        cmds.select(s.mesh, r=True)
-        s.setColour(s.mesh, (0.5,0.5,0.5))
+
 
     """
     Switch back to the last tool used
@@ -77,9 +86,10 @@ class Selector(object):
                 # Pick nearest bone with influence
                 bone, verts = s.pickSkeleton(intersection)
                 if bone:
-                    cmds.select(verts, r=True)
+                    cmds.select(["%s.vtx[%s]" % (s.mesh, v) for v in verts.keys()], r=True)
                     s.setColour(s.mesh, (0.3, 0.8, 0.1))
-                    # cmds.select(bone, r=True)
+                    cmds.select(bone, r=True)
+                    s.clearMeshes = True
         s.revertTool()
 
     """
@@ -117,47 +127,26 @@ class Selector(object):
     def pickSkeleton(s, intersection):
         hitPoint, hitRayParam, hitFace, hitTriangle, hitBary1, hitBary2 = intersection
         if hitTriangle != -1:
-            # Grab original selection
-            selection = cmds.ls(sl=True)
             # Grab skin Cluster
             skin = mel.eval("findRelatedSkinCluster %s" % s.mesh)
             if skin:
                 # Get Face selected
                 cmds.select("%s.f[%s]" % (s.mesh, hitFace), r=True)
-                # face = cmds.polyInfo(fv=True)
-
-                # joints = cmds.skinCluster(skin, q=True, wi=True)
-                # weights = {}
-                # verts = [v for v in findall(r"\s(\d+)\s", cmds.polyInfo(fv=True)[0])]
-                # vertWeights = {}
-                # for j in cmds.listAttr("%s.weightList" % skin, multi=True):
-                #     parse = findall(r"\[(\d+)\]", j)
-                #     if 1 < len(parse):
-                #         joint = joints[int(parse[1])]
-                #         weights[joint] = weights.get(joint, [])
-                #         weights[joint].append("%s.vtx[%s]" % (s.mesh, parse[0]))
-                #         if parse[0] in verts:
-                #             vertWeights[joint] = vertWeights.get(joint, 0)
-                #             vertWeights[joint] += cmds.getAttr("%s.%s" % (skin, j))
-                # highestInfluence = max(vertWeights,key = lambda x: vertWeights.get(x))
-                # return highestInfluence, weights[highestInfluence]
-
-
-                face = cmds.polyInfo(fv=True)
-
-                # Get Vertexes
-                verts = ["%s.vtx[%s]" % (s.mesh, v) for v in findall(r"\s(\d+)\s", face[0])]
-                # Get Joints
-                cmds.select(verts, r=True)
-                print cmds.skinPercent(skin, verts, v=True, q=True)
-                # joints = cmds.skinPercent(skin, q=True, t=None)
-                # # Get weights
-                # weights = sorted(
-                #     [(j, cmds.skinPercent(skin, t=j, q=True)) for j in joints],
-                #     key=lambda x: x[1])
-                # # Get other weights of the bone
-                # cmds.select(selection)
-                # return weights[-1][0]
+                verts = [int(v) for v in findall(r"\s(\d+)\s", cmds.polyInfo(fv=True)[0])]
+                joints = cmds.skinPercent(skin, "%s.vtx[0]" % s.mesh, q=True, t=None)
+                weights = {}
+                selWeights = {}
+                for vert in range(cmds.getAttr("%s.weightList" % skin, size=True)):
+                    for i, v in enumerate(cmds.skinPercent(skin, "%s.vtx[%s]" % (s.mesh, vert), q=True, v=True)):
+                        joint = joints[i]
+                        if 0.2 < v:
+                            weights[joint] = weights.get(joint, {})
+                            weights[joint][vert] = v
+                        if vert in verts:
+                            selWeights[joint] = selWeights.get(joint, 0)
+                            selWeights[joint] += v
+                maxWeight = max(selWeights, key=lambda x: selWeights.get(x))
+                return maxWeight, weights[maxWeight]
             else:
                 print "No skin found."
         else:
