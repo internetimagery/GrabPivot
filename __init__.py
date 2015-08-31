@@ -15,7 +15,7 @@ class Selector(object):
     def __init__(s, objects):
         s.meshes = objects # Allowed meshes
         s.mesh = ""
-        s.weightCache = {}
+        s.cache = {}
         s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#, ro=True)
         s.tool = "TempSelectionTool"
         s.clearMeshes = False # Do we need to clear the meshes?
@@ -39,6 +39,8 @@ class Selector(object):
                     for mesh in s.meshes:
                         s.setColour(mesh)
                     s.clearMeshes = False
+                    # Clear cache
+                    s.cache = {}
 
     """
     Set vertex colour on selection
@@ -102,11 +104,16 @@ class Selector(object):
             if intersection:
                 # Pick nearest bone with influence
                 bone, verts = s.pickSkeleton(intersection)
+                s.cache["lastJoint"] = s.cache.get("lastJoint", "")
                 if bone:
-                    cmds.select(["%s.vtx[%s]" % (s.mesh, v) for v in verts.keys()], r=True)
-                    s.setColour(s.mesh, (0.3, 0.8, 0.1))
-                    cmds.select(s.mesh, r=True)
-                    s.clearMeshes = True
+                    if s.cache["lastJoint"] and s.cache["lastJoint"] == bone:
+                        pass
+                    else:
+                        s.cache["lastJoint"] = bone
+                        cmds.select(["%s.vtx[%s]" % (s.mesh, v) for v in verts.keys()], r=True)
+                        s.setColour(s.mesh, (9, 0.7, 0.3))
+                        cmds.select(s.mesh, r=True)
+                        s.clearMeshes = True
             cmds.refresh()
 
     """
@@ -145,8 +152,9 @@ class Selector(object):
                 cmds.select("%s.f[%s]" % (s.mesh, hitFace), r=True)
                 verts = [int(v) for v in findall(r"\s(\d+)\s", cmds.polyInfo(fv=True)[0])]
                 joints = cmds.skinPercent(skin, "%s.vtx[0]" % s.mesh, q=True, t=None)
+                s.cache["weightCache"] = s.cache.get("weightCache", {})
                 try: # Load cache first
-                    weights = s.weightCache[s.mesh]
+                    weights = s.cache["weightCache"][s.mesh]
                 except KeyError:
                     weights = {}
                     for vert in range(cmds.getAttr("%s.weightList" % skin, size=True)):
@@ -155,6 +163,7 @@ class Selector(object):
                             if 0.2 < v:
                                 weights[joint] = weights.get(joint, {})
                                 weights[joint][vert] = v
+                    s.cache["weightCache"][s.mesh] = weights
 
                 selWeights = {}
                 for joint in joints:
