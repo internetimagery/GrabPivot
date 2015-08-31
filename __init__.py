@@ -166,7 +166,7 @@ class Selector(object):
                     s.cache["weightCache"][s.mesh] = weights
 
                 selWeights = {}
-                for joint in joints:
+                for joint in weights:
                     for vert in verts:
                         if vert in weights[joint]:
                             selWeights[joint] = selWeights.get(joint, 0)
@@ -179,8 +179,7 @@ class Selector(object):
             print "Nothing to select."
         return None, None
 
-sel = cmds.ls(type="transform")
-sel = ["pCylinder1"]
+sel = cmds.ls(sl=True)
 go = Selector(sel)
 
 # result = {}
