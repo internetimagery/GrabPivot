@@ -7,14 +7,12 @@ from re import findall
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 
-
 class Selector(object):
     """
     Set it all up
     """
-    def __init__(s, objects):
-        s.meshes = objects # Allowed meshes
-        s.mesh = ""
+    def __init__(s, obj):
+        s.mesh = obj
         s.cache = {}
         s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#, ro=True)
         s.tool = "TempSelectionTool"
@@ -27,17 +25,17 @@ class Selector(object):
         print "selection Changed"
         selection = cmds.ls(sl=True)
         if cmds.currentCtx() != s.tool:
-            if selection and len(selection) == 1 and selection[0] in s.meshes:
+            if selection and len(selection) == 1 and selection[0] == s.mesh:
                 s.switchTool()
                 s.mesh = selection[0]
-                s.setColour(s.mesh, (0.5,0.5,0.5))
+                cmds.select(clear=True)
+                s.setColour(s.mesh, (0.4,0.4,0.4))
                 s.clearMeshes = True
             elif selection and cmds.ls(sl=True, st=True)[1] == "joint":
                 print "No need to clear"
             else:
                 if s.clearMeshes:
-                    for mesh in s.meshes:
-                        s.setColour(mesh)
+                    s.setColour(s.mesh)
                     s.clearMeshes = False
                     # Clear cache
                     s.cache = {}
@@ -93,6 +91,8 @@ class Selector(object):
                     s.setColour(s.mesh, (0.3, 0.8, 0.1))
                     cmds.select(bone, r=True)
                     s.clearMeshes = True
+            else:
+                print "Nothing to select."
         s.revertTool()
 
     """
@@ -175,17 +175,7 @@ class Selector(object):
                 return maxWeight, weights[maxWeight]
             else:
                 print "No skin found."
-        else:
-            print "Nothing to select."
         return None, None
 
-sel = cmds.ls(sl=True)
+sel = cmds.ls(sl=True)[0]
 go = Selector(sel)
-
-# result = {}
-# for i in cmds.listAttr("skinCluster1.weightList", multi=True):
-#     match = findall(r"\[(\d+)\]", i)
-#     if len(match) == 1:
-#         result[match[0]] = []
-#     else:
-#         result[match[0]].append(match[1])
