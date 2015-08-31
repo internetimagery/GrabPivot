@@ -1,26 +1,5 @@
-# Animatable movable pivot
-import maya.cmds as cmds
-#
-# def Setup():
-#     selection = cmds.ls(sl=True)
-#     if selection:
-#         for obj in selection:
-#             objPos = cmds.xform(obj, q=True, t=True, ws=True)
-#             joint = cmds.joint(n="%s_pivot" % obj, p=objPos)
-#             cmds.parent(obj, joint)
-#             cmds.connectAttr("%s.translate" % joint, "%s.rotatePivot" % obj, f=True)
-#     else:
-#         cmds.confirmDialog(t="Uh..", m="You need to select something.")
-#
-# Setup()
-
-
-# # Other stuff
-# class Tool(object):
-#     def __enter__(s):
-#         s.ctx = cmds.currentCtx() # Get current tool
-#     def __exit__(s, err, type, trace):
-#         cmds.setToolTo(s.ctx) # reset tool
+# Begin
+# Find joints tool
 
 import maya.mel as mel
 import maya.cmds as cmds
@@ -28,64 +7,105 @@ from re import findall
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 
-class NewTool(object):
-    def __init__(s, objs):
-        s.valid = objs
-        pass
-    def load(s):
-        sel = cmds.ls(sl=True)
-        if sel and sel[0] in s.valid:
-            s.sel = sel[0]
-            s.tool = cmds.currentCtx()
-            s.myTool = "TempTool"
-            if cmds.draggerContext(s.myTool, exists=True):
-                cmds.deleteUI(s.myTool)
-            cmds.draggerContext(s.myTool, name=s.myTool, pressCommand=s.click, cursor='hand')
-            cmds.setToolTo(s.myTool)
-            print "Make a selection"
-        else:
-            print "Nothing selected"
-    def click(s):
-        try:
-            # Grab mouse co-ords on screen
-            viewX, viewY, viewZ = cmds.draggerContext(s.myTool, q=True, ap=True)
-            position = om.MPoint()
-            direction = om.MVector()
-            # Convert 2D screen positions into 3D world positions
-            omui.M3dView().active3dView().viewToWorld(int(viewX), int(viewY), position, direction)
-            sel = om.MSelectionList()
-            sel.add(s.sel)
-            dagPath = sel.getDagPath(0)
-            fnMesh = om.MFnMesh(dagPath)
-            intersection = fnMesh.closestIntersection(om.MFloatPoint(position), om.MFloatVector(direction), om.MSpace.kWorld, 99999, False)
-            # Did our ray intersect with the object?
-            if intersection:
-                hitPoint, hitRayParam, hitFace, hitTriangle, hitBary1, hitBary2 = intersection
-                if hitTriangle != -1:
-                    # Grab Skin Cluster
-                    skin = mel.eval("findRelatedSkinCluster %s" % s.sel)
-                    if skin:
-                        # Get Face points
-                        cmds.select("%s.f[%s]" % (s.sel, hitFace))
-                        face = cmds.polyInfo(fv=True)
-                        # Get vertexes
-                        verts = ["%s.vtx[%s]" % (s.sel, v) for v in findall(r"\s(\d+)\s", face[0])]
-                        # Get Joints
-                        cmds.select(verts, r=True)
-                        joints = cmds.skinPercent(skin, q=True, t=None)
-                        # Get weights
-                        weights = sorted(
-                            [(j, cmds.skinPercent(skin, t=j, q=True)) for j in joints],
-                            key= lambda x: x[1],
-                            reverse=True)
-                        cmds.select(weights[0][0], r=True)
-                    else:
-                        print "No skin found"
-            # Return to previous tool
-            cmds.setToolTo(s.tool)
-            cmds.refresh()
-        except RuntimeError:
-            print "There was an issue selecting the object."
+class Selector(object):
+    """
+    Set it all up
+    """
+    def __init__(s, objects):
+        s.meshes = objects # Allowed meshes
+        s.mesh = ""
+        s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], ro=True)
+        s.tool = "TempSelectionTool"
+        s.selectionFree = True
 
-thing = NewTool(["pTorus1"])
-cmds.scriptJob(e=["SelectionChanged", thing.load])#, ro=True)
+    """
+    Monitor selection changes
+    """
+    def selectionChanged(s):
+        print "selection Changed"
+        if s.selectionFree:
+            selection = cmds.ls(sl=True)
+            if selection and selection[0] in s.meshes:
+                s.switchTool()
+                s.mesh = selection[0]
+
+    """
+    Switch to our custom picker tool
+    """
+    def switchTool(s):
+        s.lastTool = cmds.currentCtx()
+        if cmds.draggerContext(s.tool, ex=True):
+            cmds.deleteUI(s.tool)
+        cmds.draggerContext(
+            s.tool,
+            name=s.tool,
+            pressCommand=s.makeSelection,
+            cursor="hand")
+        cmds.setToolTo(s.tool)
+        s.selectionFree = False
+
+    """
+    Switch back to the last tool used
+    """
+    def revertTool(s):
+        cmds.setToolTo(s.lastTool)
+        s.selectionFree = True
+        cmds.refresh()
+
+    """
+    Pick a point in space on the mesh
+    """
+    def makeSelection(s):
+        if s.mesh:
+            try:
+                # Grab screen co-ords
+                viewX, viewY, viewZ = cmds.draggerContext(s.tool, q=True, ap=True)
+                # Set up empty vectors
+                position = om.MPoint()
+                direction = om.MVector()
+                # Convert 2D positions into 3D positions
+                omui.M3dView().active3dView().viewToWorld(int(viewX), int(viewY), position, direction)
+                selection = om.MSelectionList()
+                selection.add(s.mesh)
+                dagPath = selection.getDagPath(0)
+                fnMesh = om.MFnMesh(dagPath)
+                # Shoot a ray and check for intersection
+                intersection = fnMesh.closestIntersection(om.MFloatPoint(position), om.MFloatVector(direction), om.MSpace.kWorld, 99999, False)
+                if intersection:
+                    # Pick nearest bone with influence
+                    s.pickSkeleton(intersection)
+            except IOError:
+                print "Could not make selection. Were you selecting the right object?"
+        s.revertTool()
+
+    """
+    Pick a bone from a point in space
+    """
+    def pickSkeleton(s, intersection):
+        hitPoint, hitRayParam, hitFace, hitTriangle, hitBary1, hitBary2 = intersection
+        if hitTriangle != -1:
+            # Grab skin Cluster
+            skin = mel.eval("findRelatedSkinCluster %s" % s.mesh)
+            if skin:
+                # Get Face selected
+                cmds.select("%s.f[%s]" % (s.mesh, hitFace), r=True)
+                face = cmds.polyInfo(fv=True)
+                # Get Vertexes
+                verts = ["%s.vtx[%s]" % (s.mesh, v) for v in findall(r"\s(\d+)\s", face[0])]
+                # Get Joints
+                cmds.select(verts, r=True)
+                joints = cmds.skinPercent(skin, q=True, t=None)
+                # Get weights
+                weights = sorted(
+                    [(j, cmds.skinPercent(skin, t=j, q=True)) for j in joints],
+                    key=lambda x: x[1],
+                    reverse=True)
+                cmds.select(weights[0][0], r=True)
+            else:
+                print "No skin found."
+        else:
+            print "Nothing to select."
+
+sel = cmds.ls(type="transform")
+sel = ["pCylinder1"]
+go = Selector(sel)
