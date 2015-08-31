@@ -15,6 +15,7 @@ class Selector(object):
     def __init__(s, objects):
         s.meshes = objects # Allowed meshes
         s.mesh = ""
+        s.weightCache = {}
         s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#, ro=True)
         s.tool = "TempSelectionTool"
         s.clearMeshes = False # Do we need to clear the meshes?
@@ -144,17 +145,23 @@ class Selector(object):
                 cmds.select("%s.f[%s]" % (s.mesh, hitFace), r=True)
                 verts = [int(v) for v in findall(r"\s(\d+)\s", cmds.polyInfo(fv=True)[0])]
                 joints = cmds.skinPercent(skin, "%s.vtx[0]" % s.mesh, q=True, t=None)
-                weights = {}
+                try: # Load cache first
+                    weights = s.weightCache[s.mesh]
+                except KeyError:
+                    weights = {}
+                    for vert in range(cmds.getAttr("%s.weightList" % skin, size=True)):
+                        for i, v in enumerate(cmds.skinPercent(skin, "%s.vtx[%s]" % (s.mesh, vert), q=True, v=True)):
+                            joint = joints[i]
+                            if 0.2 < v:
+                                weights[joint] = weights.get(joint, {})
+                                weights[joint][vert] = v
+
                 selWeights = {}
-                for vert in range(cmds.getAttr("%s.weightList" % skin, size=True)):
-                    for i, v in enumerate(cmds.skinPercent(skin, "%s.vtx[%s]" % (s.mesh, vert), q=True, v=True)):
-                        joint = joints[i]
-                        if 0.2 < v:
-                            weights[joint] = weights.get(joint, {})
-                            weights[joint][vert] = v
-                        if vert in verts:
+                for joint in joints:
+                    for vert in verts:
+                        if vert in weights[joint]:
                             selWeights[joint] = selWeights.get(joint, 0)
-                            selWeights[joint] += v
+                            selWeights[joint] += weights[joint][vert]
                 maxWeight = max(selWeights, key=lambda x: selWeights.get(x))
                 return maxWeight, weights[maxWeight]
             else:
