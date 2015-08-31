@@ -63,7 +63,7 @@ class Selector(object):
         cmds.draggerContext(
             s.tool,
             name=s.tool,
-            pressCommand=s.makeSelection,
+            releaseCommand=s.makeSelection,
             dragCommand=s.updateSelectionPreview,
             cursor="hand")
         cmds.setToolTo(s.tool)
@@ -96,7 +96,17 @@ class Selector(object):
     Update display
     """
     def updateSelectionPreview(s):
-        print "dragging"
+        if s.mesh:
+            intersection = s.getPointer(s.mesh, s.tool)
+            if intersection:
+                # Pick nearest bone with influence
+                bone, verts = s.pickSkeleton(intersection)
+                if bone:
+                    cmds.select(["%s.vtx[%s]" % (s.mesh, v) for v in verts.keys()], r=True)
+                    s.setColour(s.mesh, (0.3, 0.8, 0.1))
+                    cmds.select(s.mesh, r=True)
+                    s.clearMeshes = True
+            cmds.refresh()
 
     """
     Get Mouse in 3D
@@ -104,7 +114,7 @@ class Selector(object):
     def getPointer(s, mesh, tool):
         try:
             # Grab screen co-ords
-            viewX, viewY, viewZ = cmds.draggerContext(tool, q=True, ap=True)
+            viewX, viewY, viewZ = cmds.draggerContext(tool, q=True, dp=True)
             # Set up empty vectors
             position = om.MPoint()
             direction = om.MVector()
