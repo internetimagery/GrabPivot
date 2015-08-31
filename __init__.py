@@ -57,6 +57,8 @@ class Selector(object):
             dragCommand=s.updateSelectionPreview,
             cursor="hand")
         cmds.setToolTo(s.tool)
+        cmds.select(s.mesh, r=True)
+        s.setColour(s.mesh, (0.5,0.5,0.5))
 
     """
     Switch back to the last tool used
@@ -75,9 +77,9 @@ class Selector(object):
                 # Pick nearest bone with influence
                 bone, verts = s.pickSkeleton(intersection)
                 if bone:
-                    cmds.select(s.mesh, r=True)
-                    s.setColour(s.mesh, (0.5,0.5,0.5))
-                    cmds.select(bone, r=True)
+                    cmds.select(verts, r=True)
+                    s.setColour(s.mesh, (0.3, 0.8, 0.1))
+                    # cmds.select(bone, r=True)
         s.revertTool()
 
     """
@@ -124,28 +126,30 @@ class Selector(object):
                 cmds.select("%s.f[%s]" % (s.mesh, hitFace), r=True)
                 # face = cmds.polyInfo(fv=True)
 
-                joints = cmds.skinCluster(skin, q=True, wi=True)
-                weights = {}
-                verts = [v for v in findall(r"\s(\d+)\s", cmds.polyInfo(fv=True)[0])]
-                vertWeights = {}
-                for j in cmds.listAttr("%s.weightList" % skin, multi=True):
-                    parse = findall(r"\[(\d+)\]", j)
-                    if 1 < len(parse):
-                        joint = joints[int(parse[1])]
-                        weights[joint] = weights.get(joint, [])
-                        weights[joint].append(parse[0])
-                        if parse[0] in verts:
-                            vertWeights[joint] = vertWeights.get(joint, 0)
-                            vertWeights[joint] += cmds.getAttr("%s.%s" % (skin, j))
-                highestInfluence = max(vertWeights,key = lambda x: vertWeights.get(x))
-                return highestInfluence, weights[highestInfluence]
+                # joints = cmds.skinCluster(skin, q=True, wi=True)
+                # weights = {}
+                # verts = [v for v in findall(r"\s(\d+)\s", cmds.polyInfo(fv=True)[0])]
+                # vertWeights = {}
+                # for j in cmds.listAttr("%s.weightList" % skin, multi=True):
+                #     parse = findall(r"\[(\d+)\]", j)
+                #     if 1 < len(parse):
+                #         joint = joints[int(parse[1])]
+                #         weights[joint] = weights.get(joint, [])
+                #         weights[joint].append("%s.vtx[%s]" % (s.mesh, parse[0]))
+                #         if parse[0] in verts:
+                #             vertWeights[joint] = vertWeights.get(joint, 0)
+                #             vertWeights[joint] += cmds.getAttr("%s.%s" % (skin, j))
+                # highestInfluence = max(vertWeights,key = lambda x: vertWeights.get(x))
+                # return highestInfluence, weights[highestInfluence]
 
 
-                #
-                # # Get Vertexes
-                # verts = ["%s.vtx[%s]" % (s.mesh, v) for v in findall(r"\s(\d+)\s", face[0])]
-                # # Get Joints
-                # cmds.select(verts, r=True)
+                face = cmds.polyInfo(fv=True)
+
+                # Get Vertexes
+                verts = ["%s.vtx[%s]" % (s.mesh, v) for v in findall(r"\s(\d+)\s", face[0])]
+                # Get Joints
+                cmds.select(verts, r=True)
+                print cmds.skinPercent(skin, verts, v=True, q=True)
                 # joints = cmds.skinPercent(skin, q=True, t=None)
                 # # Get weights
                 # weights = sorted(
