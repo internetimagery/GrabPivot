@@ -14,7 +14,7 @@ class Selector(object):
     """
     def __init__(s, objects):
         s.meshes = {}
-        s.allJoints = set() # Shortcut to all joints
+        s.allJoints = {} # Shortcut to all joints
         # Build our rigs information
         for obj in objects:
             skin = mel.eval("findRelatedSkinCluster %s" % obj)
@@ -24,10 +24,18 @@ class Selector(object):
                     for i, v in enumerate(cmds.skinPercent(skin, "%s.vtx[%s]" % (obj, vert), q=True, v=True)):
                         joint = joints[i]
                         if 0.2 < v:
-                            s.allJoints.add(joint)
+                            # Sort by joints
+                            s.allJoints[joint] = s.allJoints.get(joint, [])
+                            s.allJoints[joint].append("%s.vtx[%s]" % (obj, vert))
+                            # Sort by meshes
                             s.meshes[obj] = s.meshes.get(obj, {})
                             s.meshes[obj][joint] = s.meshes[obj].get(joint, {})
                             s.meshes[obj][joint][vert] = v
+        # Reduce vert call
+        for j in s.allJoints:
+            cmds.select(s.allJoints[j], r=True)
+            s.allJoints[j] = cmds.filterExpand(ex=False, sm=31)
+        cmds.select(clear=True)
 
         s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#,    ro=True)
         s.tool = "TempSelectionTool"
@@ -51,6 +59,8 @@ class Selector(object):
                     s.switchTool() # switch to our picker tool
                     s.currentMesh = selection[0]
                     s.setColour("%s.vtx[0:]" % s.currentMesh, (0.4,0.4,0.4))
+                    cmds.select(clear=True)
+                    cmds.refresh()
                     return
             if s.turnOffColours:
                 s.setColour() # Turn off all colours
@@ -97,10 +107,8 @@ class Selector(object):
     Set mesh colour from bone
     """
     def boneSetColour(s, bone, meshes, colour):
-        for mesh in meshes:
-            if bone in meshes[mesh]:
-                verts = meshes[mesh][bone].keys()
-                s.setColour(["%s.vtx[%s]" % (mesh, v) for v in verts], colour)
+        if bone in s.allJoints:
+            s.setColour(s.allJoints[bone], colour)
 
     """
     Pick a point in space on the mesh
@@ -132,7 +140,7 @@ class Selector(object):
                 else:
                     s.lastJoint = bone
                     s.boneSetColour(bone, s.meshes, (9, 0.7, 0.3))
-        cmds.refresh()
+                    cmds.refresh()
 
     """
     Get Mouse in 3D
