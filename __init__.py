@@ -93,7 +93,8 @@ class Selector(object):
             name=s.tool,
             releaseCommand=s.makeSelection,
             dragCommand=s.updateSelectionPreview,
-            cursor="hand")
+            cursor="hand",
+            image1="hands.png")
         cmds.setToolTo(s.tool)
 
 
