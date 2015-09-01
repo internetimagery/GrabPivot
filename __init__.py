@@ -7,6 +7,7 @@ from re import findall
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
 from pprint import pprint
+from time import time
 
 class Selector(object):
     """
@@ -138,6 +139,7 @@ class Selector(object):
                 if bone == s.lastJoint:
                     pass # No need to do anything
                 else:
+                    t = time()
                     s.lastJoint = bone
                     s.boneSetColour(bone, s.meshes, (9, 0.7, 0.3))
                     cmds.refresh()
@@ -174,14 +176,14 @@ class Selector(object):
     """
     def pickSkeleton(s, mesh, faceID):
         # Get verts from Face
+        meshes = s.meshes
         verts = [int(v) for v in findall(r"\s(\d+)\s", cmds.polyInfo("%s.f[%s]" % (mesh, faceID), fv=True)[0])]
 
         weights = {}
-        for joint in s.meshes[mesh]:
-            for vert in verts:
-                if vert in s.meshes[mesh][joint]:
-                    weights[joint] = weights.get(joint, 0)
-                    weights[joint] += s.meshes[mesh][joint][vert]
+        for joint in meshes[mesh]:
+            weights[joint] = weights.get(joint, 0) # Initialize
+            weights[joint] = sum([meshes[mesh][joint][v] for v in verts if v in meshes[mesh][joint]])
+
         if weights:
             maxWeight = max(weights, key=lambda x: weights.get(x))
             return maxWeight
