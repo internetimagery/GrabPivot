@@ -6,17 +6,32 @@ import maya.cmds as cmds
 from re import findall
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaUI as omui
+from pprint import pprint
 
 class Selector(object):
     """
     Set it all up
     """
-    def __init__(s, obj):
-        s.mesh = obj
-        s.cache = {}
-        s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#, ro=True)
+    def __init__(s, objects):
+        s.meshes = {}
+        s.allJoints = set() # Shortcut to all joints
+        # Build our rigs information
+        for obj in objects:
+            skin = mel.eval("findRelatedSkinCluster %s" % obj)
+            if skin:
+                joints = cmds.skinPercent(skin, "%s.vtx[0]" % obj, q=True, t=None)
+                for vert in range(cmds.getAttr("%s.weightList" % skin, size=True)):
+                    for i, v in enumerate(cmds.skinPercent(skin, "%s.vtx[%s]" % (obj, vert), q=True, v=True)):
+                        joint = joints[i]
+                        if 0.2 < v:
+                            s.allJoints.add(joint)
+                            s.meshes[obj] = s.meshes.get(obj, {})
+                            s.meshes[obj][joint] = s.meshes[obj].get(joint, {})
+                            s.meshes[obj][joint][vert] = v
+
+        s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#,    ro=True)
         s.tool = "TempSelectionTool"
-        s.clearMeshes = False # Do we need to clear the meshes?
+        s.turnOffColours = False # Don't turn off colours on each selection change. Only when done
 
     """
     Monitor selection changes
@@ -25,34 +40,34 @@ class Selector(object):
         print "selection Changed"
         selection = cmds.ls(sl=True)
         if cmds.currentCtx() != s.tool:
-            if selection and len(selection) == 1 and selection[0] == s.mesh:
-                s.switchTool()
-                s.mesh = selection[0]
-                cmds.select(clear=True)
-                s.setColour(s.mesh, (0.4,0.4,0.4))
-                s.clearMeshes = True
-            elif selection and cmds.ls(sl=True, st=True)[1] == "joint":
-                print "No need to clear"
-            else:
-                if s.clearMeshes:
-                    s.setColour(s.mesh)
-                    s.clearMeshes = False
-                    # Clear cache
-                    s.cache = {}
+            if selection and len(selection) == 1:
+                if selection[0] in s.allJoints:
+                    # Picked the joint
+                    s.boneSetColour(selection[0], s.meshes, (0.3, 0.8, 0.1))
+                    return
+                elif selection[0] in s.meshes:
+                    # Initialize our setup
+                    s.switchTool() # switch to our picker tool
+                    s.currentMesh = selection[0]
+                    s.setColour("%s.vtx[0:]" % s.currentMesh, (0.4,0.4,0.4))
+                    return
+            if s.turnOffColours:
+                s.setColour() # Turn off all colours
+                s.turnOffColours = False
 
     """
     Set vertex colour on selection
     """
-    def setColour(s, mesh, colour=None):
-        selection = cmds.ls(sl=True)
-        cmds.select(mesh, r=True)
-        cmds.polyColorPerVertex(rgb=(0.5,0.5,0.5))
-        cmds.select(selection, r=True)
-        if colour:
-            cmds.setAttr("%s.displayColors" % mesh, 1)
-            cmds.polyColorPerVertex(rgb=colour)
-        else:
-            cmds.setAttr("%s.displayColors" % mesh, 0)
+    def setColour(s, selection=None, colour=None):
+        for mesh in s.meshes:
+            cmds.polyColorPerVertex("%s.vtx[0:]" % mesh, rgb=(0.5,0.5,0.5))
+            if colour:
+                cmds.setAttr("%s.displayColors" % mesh, 1)
+            else:
+                cmds.setAttr("%s.displayColors" % mesh, 0)
+        if selection and colour:
+            cmds.polyColorPerVertex(selection, rgb=colour)
+            s.turnOffColours = True # There is colour to be turned off
 
     """
     Switch to our custom picker tool
@@ -78,29 +93,35 @@ class Selector(object):
         cmds.refresh()
 
     """
+    Set mesh colour from bone
+    """
+    def boneSetColour(s, bone, meshes, colour):
+        for mesh in meshes:
+            if bone in meshes[mesh]:
+                verts = meshes[mesh][bone].keys()
+                s.setColour(["%s.vtx[%s]" % (mesh, v) for v in verts], colour)
+
+    """
     Pick a point in space on the mesh
     """
     def makeSelection(s):
-        if s.mesh:
-            intersection = s.getPointer(s.mesh, s.tool)
-            if intersection:
-                # Pick nearest bone with influence
-                bone, verts = s.pickSkeleton(intersection)
-                if bone:
-                    cmds.select(["%s.vtx[%s]" % (s.mesh, v) for v in verts.keys()], r=True)
-                    s.setColour(s.mesh, (0.3, 0.8, 0.1))
-                    cmds.select(bone, r=True)
-                    s.clearMeshes = True
-            else:
-                print "Nothing to select."
+        intersection = s.getPointer(s.meshes, s.tool)
+        if intersection:
+            # Pick nearest bone with influence
+            mesh, faceID = intersection
+            bone = s.pickSkeleton(mesh, faceID)
+            if bone:
+                cmds.select(bone, r=True)
+        else:
+            print "Nothing to select."
         s.revertTool()
 
     """
     Update display
     """
     def updateSelectionPreview(s):
-        if s.mesh:
-            intersection = s.getPointer(s.mesh, s.tool)
+        if s.currentMesh:
+            intersection = s.getPointer(s.currentMesh, s.tool)
             if intersection:
                 # Pick nearest bone with influence
                 bone, verts = s.pickSkeleton(intersection)
@@ -110,16 +131,14 @@ class Selector(object):
                         pass
                     else:
                         s.cache["lastJoint"] = bone
-                        cmds.select(["%s.vtx[%s]" % (s.mesh, v) for v in verts.keys()], r=True)
-                        s.setColour(s.mesh, (9, 0.7, 0.3))
-                        cmds.select(s.mesh, r=True)
+                        s.setColour(["%s.vtx[%s]" % (s.currentMesh, v) for v in verts.keys()], (9, 0.7, 0.3))
                         s.clearMeshes = True
             cmds.refresh()
 
     """
     Get Mouse in 3D
     """
-    def getPointer(s, mesh, tool):
+    def getPointer(s, meshes, tool):
         try:
             # Grab screen co-ords
             viewX, viewY, viewZ = cmds.draggerContext(tool, q=True, dp=True)
@@ -128,13 +147,17 @@ class Selector(object):
             direction = om.MVector()
             # Convert 2D positions into 3D positions
             omui.M3dView().active3dView().viewToWorld(int(viewX), int(viewY), position, direction)
-            selection = om.MSelectionList()
-            selection.add(mesh)
-            dagPath = selection.getDagPath(0)
-            fnMesh = om.MFnMesh(dagPath)
-            # Shoot a ray and check for intersection
-            intersection = fnMesh.closestIntersection(om.MFloatPoint(position), om.MFloatVector(direction), om.MSpace.kWorld, 99999, False)
-            return intersection
+            # Check our meshes
+            for mesh in meshes:
+                selection = om.MSelectionList()
+                selection.add(mesh)
+                dagPath = selection.getDagPath(0)
+                fnMesh = om.MFnMesh(dagPath)
+                # Shoot a ray and check for intersection
+                intersection = fnMesh.closestIntersection(om.MFloatPoint(position), om.MFloatVector(direction), om.MSpace.kWorld, 99999, False)
+                # hitPoint, hitRayParam, hitFace, hitTriangle, hitBary1, hitBary2 = intersection
+                if intersection and intersection[3] != -1:
+                    return (mesh, intersection[2]) # hit mesh and face ID
         except RuntimeError:
             print "Could not find point."
 
@@ -142,40 +165,21 @@ class Selector(object):
     """
     Pick a bone from a point in space
     """
-    def pickSkeleton(s, intersection):
-        hitPoint, hitRayParam, hitFace, hitTriangle, hitBary1, hitBary2 = intersection
-        if hitTriangle != -1:
-            # Grab skin Cluster
-            skin = mel.eval("findRelatedSkinCluster %s" % s.mesh)
-            if skin:
-                # Get Face selected
-                cmds.select("%s.f[%s]" % (s.mesh, hitFace), r=True)
-                verts = [int(v) for v in findall(r"\s(\d+)\s", cmds.polyInfo(fv=True)[0])]
-                joints = cmds.skinPercent(skin, "%s.vtx[0]" % s.mesh, q=True, t=None)
-                s.cache["weightCache"] = s.cache.get("weightCache", {})
-                try: # Load cache first
-                    weights = s.cache["weightCache"][s.mesh]
-                except KeyError:
-                    weights = {}
-                    for vert in range(cmds.getAttr("%s.weightList" % skin, size=True)):
-                        for i, v in enumerate(cmds.skinPercent(skin, "%s.vtx[%s]" % (s.mesh, vert), q=True, v=True)):
-                            joint = joints[i]
-                            if 0.2 < v:
-                                weights[joint] = weights.get(joint, {})
-                                weights[joint][vert] = v
-                    s.cache["weightCache"][s.mesh] = weights
+    def pickSkeleton(s, mesh, faceID):
+        # Get verts from Face
+        verts = [int(v) for v in findall(r"\s(\d+)\s", cmds.polyInfo("%s.f[%s]" % (mesh, faceID), fv=True)[0])]
 
-                selWeights = {}
-                for joint in weights:
-                    for vert in verts:
-                        if vert in weights[joint]:
-                            selWeights[joint] = selWeights.get(joint, 0)
-                            selWeights[joint] += weights[joint][vert]
-                maxWeight = max(selWeights, key=lambda x: selWeights.get(x))
-                return maxWeight, weights[maxWeight]
-            else:
-                print "No skin found."
-        return None, None
+        weights = {}
+        for joint in s.meshes[mesh]:
+            for vert in verts:
+                if vert in s.meshes[mesh][joint]:
+                    weights[joint] = weights.get(joint, 0)
+                    weights[joint] += s.meshes[mesh][joint][vert]
+        if weights:
+            maxWeight = max(weights, key=lambda x: weights.get(x))
+            return maxWeight
 
-sel = cmds.ls(sl=True)[0]
-go = Selector(sel)
+sel = cmds.ls(sl=True)
+# sel = cmds.ls("body_mesh", r=True)
+if sel:
+    go = Selector(sel)
