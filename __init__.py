@@ -32,6 +32,7 @@ class Selector(object):
         s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#,    ro=True)
         s.tool = "TempSelectionTool"
         s.turnOffColours = False # Don't turn off colours on each selection change. Only when done
+        s.lastJoint = "" # Previous joint, only display joint during drag on changes
 
     """
     Monitor selection changes
@@ -120,20 +121,18 @@ class Selector(object):
     Update display
     """
     def updateSelectionPreview(s):
-        if s.currentMesh:
-            intersection = s.getPointer(s.currentMesh, s.tool)
-            if intersection:
-                # Pick nearest bone with influence
-                bone, verts = s.pickSkeleton(intersection)
-                s.cache["lastJoint"] = s.cache.get("lastJoint", "")
-                if bone:
-                    if s.cache["lastJoint"] and s.cache["lastJoint"] == bone:
-                        pass
-                    else:
-                        s.cache["lastJoint"] = bone
-                        s.setColour(["%s.vtx[%s]" % (s.currentMesh, v) for v in verts.keys()], (9, 0.7, 0.3))
-                        s.clearMeshes = True
-            cmds.refresh()
+        intersection = s.getPointer(s.meshes, s.tool)
+        if intersection:
+            # Pick nearest bone with influence
+            mesh, faceID = intersection
+            bone = s.pickSkeleton(mesh, faceID)
+            if bone:
+                if bone == s.lastJoint:
+                    pass # No need to do anything
+                else:
+                    s.lastJoint = bone
+                    s.boneSetColour(bone, s.meshes, (9, 0.7, 0.3))
+        cmds.refresh()
 
     """
     Get Mouse in 3D
