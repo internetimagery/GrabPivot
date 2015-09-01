@@ -189,6 +189,6 @@ class Selector(object):
             return maxWeight
 
 sel = cmds.ls(sl=True)
-# sel = cmds.ls("body_mesh", r=True)
+# sel = cmds.listRelatives(cmds.ls("Mesh", r=True), s=False)
 if sel:
     go = Selector(sel)
