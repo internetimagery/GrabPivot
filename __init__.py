@@ -41,6 +41,15 @@ class Window(object):
         cmds.text(l="Nothing here...")
         cmds.setParent("..")
         cmds.button(h=40, l="Click to use selected objects (skinned meshes).", c=lambda x: s.addMesh())
+        cmds.separator()
+        cmds.text(al="left", l="""
+Some notes:
+-  If you add a TEXT attribute to the joint named "control" and give it the name
+of another object in the scene (ie a controller/IK handle etc) it will be selected
+instead of the bone itself.
+-  If you add a NUMERAL (float/int) attribute to the controller / bone named "selected",
+it will be set to "1" when selected and set to "0" when not.
+""")
         cmds.showWindow(win)
         s.select = Selection(win)
         s.select.call.append(s.selectUpdate)
@@ -155,7 +164,8 @@ class Picker(object):
         if cmds.currentCtx() != s.tool and s.active:
             s.active = False
             s.setColour()
-            print "Tool closed"
+            if s.lastControl:
+                cmds.setAttr(s.lastControl, 0)
 
     def setColour(s, selection=None, colour=None):
         """
@@ -262,6 +272,12 @@ class Picker(object):
                 s.select.ignore = True
                 cmds.select(controller, r=True)
                 s.boneSetColour(bone, (0.3, 0.8, 0.1))
+                # If we have previously selected a joint. Turn off selected flag
+                if s.lastControl:
+                    cmds.setAttr(s.lastControl, 0)
+                if cmds.attributeQuery("selected", n=controller, ex=True):
+                    s.lastControl = "%s.selected" % controller
+                    cmds.setAttr(s.lastControl, 1)
         else:
             print "Nothing to select."
         s.revertTool()
