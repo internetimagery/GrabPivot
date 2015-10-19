@@ -9,14 +9,6 @@ import maya.api.OpenMayaUI as omui
 from pprint import pprint
 from time import time
 
-def getIK(bone):
-    """
-    Grab an IK handle if it is attached to the bone.
-    """
-    IK = set(b for b in cmds.listConnections(list(a for a in set(cmds.listConnections(bone)) if "effector" in a)) if "ikHandle" in b)
-    return IK.pop() if IK else None
-sel = cmds.ls(sl=True)
-print getIK(sel[0])
 
 class Selector(object):
     """
@@ -25,6 +17,7 @@ class Selector(object):
     def __init__(s, objects):
         s.meshes = {}
         s.allJoints = {} # Shortcut to all joints
+        s.expectedChange = False # Prevent normal selection triggers when expecting a change
         # Build our rigs information
         for obj in objects:
             skin = mel.eval("findRelatedSkinCluster %s" % obj)
@@ -47,7 +40,24 @@ class Selector(object):
             s.allJoints[j] = cmds.filterExpand(ex=False, sm=31)
         cmds.select(clear=True)
 
-        s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], kws=True)#,    ro=True)
+        winName = "Controllerless Rig Test"
+        if cmds.window(winName, ex=True):
+            cmds.deleteUI(winName)
+        win = cmds.window(winName, rtf=True)
+        cmds.columnLayout(adj=True)
+        cmds.text(l="""
+This is a simple test for controllerless rig system.
+The active meshes currently are:
+%s
+Selecting them will turn on the picker tool.
+With the picker tool active (you can turn it on other ways) click the mesh.
+You can click (left button) and drag the mouse to see the selection. Release to select.
+If a bone has a TEXT attribute named "control" and it has an objects name within. That object will be selected instead of the bone.
+Closing this window will deactivate the tool.
+""" % ", ".join(s.meshes))
+        cmds.showWindow(win)
+
+        s.sjob = cmds.scriptJob(e=["SelectionChanged", s.selectionChanged], p=win)#,    ro=True)
         s.tool = "TempSelectionTool"
         s.turnOffColours = False # Don't turn off colours on each selection change. Only when done
         s.lastJoint = "" # Previous joint, only display joint during drag on changes
@@ -56,25 +66,25 @@ class Selector(object):
     Monitor selection changes
     """
     def selectionChanged(s):
-        print "selection Changed"
-        selection = cmds.ls(sl=True)
-        if cmds.currentCtx() != s.tool:
-            if selection and len(selection) == 1:
-                if selection[0] in s.allJoints:
-                    # Picked the joint
-                    s.boneSetColour(selection[0], s.meshes, (0.3, 0.8, 0.1))
-                    return
-                elif selection[0] in s.meshes:
-                    # Initialize our setup
-                    s.switchTool() # switch to our picker tool
-                    s.currentMesh = selection[0]
-                    s.setColour("%s.vtx[0:]" % s.currentMesh, (0.4,0.4,0.4))
-                    cmds.select(clear=True)
-                    cmds.refresh()
-                    return
-            if s.turnOffColours:
-                s.setColour() # Turn off all colours
-                s.turnOffColours = False
+        if s.expectedChange: # If we were anticipating a selection change, ignore
+            s.expectedChange = False
+        else:
+            print "selection Changed"
+            selection = cmds.ls(sl=True)
+            if cmds.currentCtx() != s.tool:
+                if selection and len(selection) == 1:
+                    if selection[0] in s.meshes:
+                        # Initialize our setup
+                        s.switchTool() # switch to our picker tool
+                        s.currentMesh = selection[0]
+                        s.setColour("%s.vtx[0:]" % s.currentMesh, (0.4,0.4,0.4))
+                        s.expectedChange = True
+                        cmds.select(clear=True)
+                        cmds.refresh()
+                        return
+                if s.turnOffColours:
+                    s.setColour() # Turn off all colours
+                    s.turnOffColours = False
 
     """
     Set vertex colour on selection
@@ -131,7 +141,13 @@ class Selector(object):
             mesh, faceID = intersection
             bone = s.pickSkeleton(mesh, faceID)
             if bone:
-                cmds.select(bone, r=True)
+                if cmds.attributeQuery("control", n=bone, ex=True):
+                    controller = cmds.getAttr("%s.control" % bone)
+                else:
+                    controller = bone
+                s.expectedChange = True
+                cmds.select(controller, r=True)
+                s.boneSetColour(bone, s.meshes, (0.3, 0.8, 0.1))
         else:
             print "Nothing to select."
         s.revertTool()
@@ -198,7 +214,8 @@ class Selector(object):
             maxWeight = max(weights, key=lambda x: weights.get(x))
             return maxWeight
 
-# sel = cmds.ls(sl=True)
-# # sel = cmds.listRelatives(cmds.ls("Mesh", r=True), s=False)
-# if sel:
-#     go = Selector(sel)
+sel = cmds.ls(sl=True)
+# sel = cmds.listRelatives(cmds.ls("Mesh", r=True), s=False)
+if sel:
+    go = Selector(sel)
+    print go.meshes
