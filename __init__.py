@@ -36,7 +36,7 @@ class Window(object):
             cmds.deleteUI(winName)
         win = cmds.window(winName, s=False, rtf=True, t="(BETA TEST) Controllerless Rigging")
         cmds.columnLayout(adj=True)
-        cmds.text(h=30, l="Controllerless Rig active on the following objects:")
+        cmds.text(h=30, l="Controllerless Rig is active on the following objects:")
         s.wrapper = cmds.scrollLayout(cr=True, bgc=[0.2,0.2,0.2], h=100)
         cmds.text(l="Nothing here...")
         cmds.setParent("..")
@@ -44,9 +44,17 @@ class Window(object):
         cmds.separator()
         cmds.text(al="left", l="""
 Some notes:
+
+-  Select some poly objects with a skin + skeleton set up and press the button above to test
+the controllerless system. Selecting the mesh will flip to the selection tool for you in this
+testing mode. Left click the mesh to select the corresponding bone / controller. Left click and
+drag across the mesh to visually see the selection sets change.
+Click the mesh a second time to clear the selection and start over.
+
 -  If you add a TEXT attribute to the joint named "control" and give it the name
 of another object in the scene (ie a controller/IK handle etc) it will be selected
 instead of the bone itself.
+
 -  If you add a NUMERAL (float/int) attribute to the controller / bone named "selected",
 it will be set to "1" when selected and set to "0" when not.
 """)
