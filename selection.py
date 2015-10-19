@@ -1,4 +1,5 @@
 # Selection callback. Dies with GUI
+
 import maya.cmds as cmds
 
 class Selection(object):

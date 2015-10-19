@@ -10,6 +10,50 @@ from pprint import pprint
 from time import time
 
 
+class Selection(object):
+    def __init__(s, win):
+        s.ignore = False
+        s.call = []
+        cmds.scriptJob(e=["SelectionChanged", s.run], p=win)
+    def run(s):
+        if not s.ignore:
+            sel = cmds.ls(sl=True)
+            if s.call:
+                for c in s.call:
+                    c(sel)
+    def __enter__(s):
+        s.ignore = True
+        return s
+    def __exit__(s, *err):
+        s.ignore = False
+
+
+class Window(object):
+    def __init__(s):
+        winName = "BETAWIN"
+        if cmds.window(winName, ex=True):
+            cmds.deleteUI(winName)
+        win = cmds.window(winName, rtf=True)
+        cmds.columnLayout(adj=True)
+        cmds.text(l="Controllerless Rig active on the following objects:")
+        s.wrapper = cmds.columnLayout(adj=True)
+        cmds.text(l="empty")
+        cmds.setParent("..")
+        cmds.button(l="Click to use selected objects (skinned meshes).", c=lambda x: s.addMesh())
+    def addMesh(s):
+        sel = cmds.ls(sl=True, type="transform")
+        cmds.deleteUI(cmds.columnLayout(s.wrapper, q=True, ca=True))
+        if sel:
+            s.selection = sel
+            for s in sel:
+                cmds.text(l=s, p=s.wrapper)
+        else:
+            s.selection = None
+            cmds.text(l="Nothing here...", p=s.wrapper)
+
+Window()
+
+
 class Selector(object):
     """
     Set it all up
@@ -214,8 +258,8 @@ Closing this window will deactivate the tool.
             maxWeight = max(weights, key=lambda x: weights.get(x))
             return maxWeight
 
-sel = cmds.ls(sl=True)
-# sel = cmds.listRelatives(cmds.ls("Mesh", r=True), s=False)
-if sel:
-    go = Selector(sel)
-    print go.meshes
+# sel = cmds.ls(sl=True)
+# # sel = cmds.listRelatives(cmds.ls("Mesh", r=True), s=False)
+# if sel:
+#     go = Selector(sel)
+#     print go.meshes
