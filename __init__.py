@@ -9,6 +9,15 @@ import maya.api.OpenMayaUI as omui
 from pprint import pprint
 from time import time
 
+def getIK(bone):
+    """
+    Grab an IK handle if it is attached to the bone.
+    """
+    IK = set(b for b in cmds.listConnections(list(a for a in set(cmds.listConnections(bone)) if "effector" in a)) if "ikHandle" in b)
+    return IK.pop() if IK else None
+sel = cmds.ls(sl=True)
+print getIK(sel[0])
+
 class Selector(object):
     """
     Set it all up
@@ -189,7 +198,7 @@ class Selector(object):
             maxWeight = max(weights, key=lambda x: weights.get(x))
             return maxWeight
 
-sel = cmds.ls(sl=True)
-# sel = cmds.listRelatives(cmds.ls("Mesh", r=True), s=False)
-if sel:
-    go = Selector(sel)
+# sel = cmds.ls(sl=True)
+# # sel = cmds.listRelatives(cmds.ls("Mesh", r=True), s=False)
+# if sel:
+#     go = Selector(sel)
