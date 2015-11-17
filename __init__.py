@@ -289,6 +289,3 @@ class Picker(object):
         else:
             print "Nothing to select."
         s.revertTool()
-
-
-Window()
